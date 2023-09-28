@@ -17,11 +17,11 @@ Infra Provisioning In AWS With Terraform
 
 ## Diagram for reference
 
-![[pictures/Basic_Diagram.png]]
+![Basic_Diagram](pictures/Basic_Diagram.png)
 
 ### EKS & Node Group
 
-![[pictures/EKS&NodeGroup.png]]
+![EKS&NodeGroup](pictures/EKS&NodeGroup.png)
 
 ## Components
 
