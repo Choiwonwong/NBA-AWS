@@ -12,8 +12,8 @@ Infra Provisioning In AWS With Terraform
 ## Notification
 
 - If you run this code to provision EKS and RDS, you will likely be charged.
-- This part has been commented out in advance, so please refer to it if necessary.
-  - Like IAM-Role for EKS & Node Group or Subnet Groups for RDS
+- Please note that the parts about RDS, EKS, and NodeGroup are not commented out.
+- So please refer to it if necessary.
 
 ## Diagram for reference
 

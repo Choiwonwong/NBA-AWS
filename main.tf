@@ -7,7 +7,6 @@ terraform {
   }
 }
 
-
 resource "aws_vpc" "nba-vpc" {
   cidr_block           = "10.10.0.0/16"
   enable_dns_hostnames = true
@@ -19,7 +18,6 @@ resource "aws_vpc" "nba-vpc" {
   }
 }
 
-
 resource "aws_subnet" "nba-public1" {
   vpc_id                  = aws_vpc.nba-vpc.id
   cidr_block              = "10.10.1.0/24"
@@ -29,7 +27,6 @@ resource "aws_subnet" "nba-public1" {
     Name = "nba-public1"
   }
 }
-
 
 resource "aws_subnet" "nba-public2" {
   vpc_id                  = aws_vpc.nba-vpc.id
@@ -196,7 +193,7 @@ resource "aws_instance" "gitops-host" {
 }
 
 resource "aws_instance" "bastion-host" {
-  ami                         = "ami-065c07551aa1610f5"
+  ami                         = "ami-0c53faf64a54b403d"
   instance_type               = "t2.micro"
   subnet_id                   = aws_subnet.nba-public1.id
   associate_public_ip_address = true
@@ -208,7 +205,6 @@ resource "aws_instance" "bastion-host" {
     Name = "bastion-host"
   }
 }
-
 
 resource "aws_security_group" "gitops-host-sg" {
   name   = "gitops-host-sg"
@@ -296,20 +292,83 @@ resource "aws_security_group" "bastion-host-sg" {
   }
 }
 
-resource "aws_security_group" "eks-node-sg" {
-  name   = "eks-node-sg"
-  vpc_id = aws_vpc.nba-vpc.id
+# resource "aws_security_group" "eks-node-sg" {
+#   name   = "eks-node-sg"
+#   vpc_id = aws_vpc.nba-vpc.id
+
+#   tags = {
+#     Name = "eks-node-sg"
+#   }
+
+#   ingress {
+#     from_port   = 22
+#     to_port     = 22
+#     protocol    = "tcp"
+#     cidr_blocks = ["10.10.0.0/16"]
+#   }
+#   ingress {
+#     from_port   = -1
+#     to_port     = -1
+#     protocol    = "icmp"
+#     cidr_blocks = ["0.0.0.0/0"]
+#   }
+#   egress {
+#     from_port   = 0
+#     to_port     = 0
+#     protocol    = "-1"
+#     cidr_blocks = ["0.0.0.0/0"]
+#   }
+# }
+
+resource "aws_key_pair" "gitops-key-pair" {
+  key_name   = "gitops-key"
+  public_key = file("gitops.pem.pub")
+  tags = {
+    description = "terraform key pair import"
+  }
+}
+
+resource "aws_key_pair" "bastion-key-pair" {
+  key_name   = "bastion-key"
+  public_key = file("bastion.pem.pub")
+  tags = {
+    description = "terraform key pair import"
+  }
+}
+
+resource "aws_key_pair" "eks-node-key-pair" {
+  key_name   = "eks-node-key"
+  public_key = file("eks-node.pem.pub")
+  tags = {
+    description = "terraform key pair import"
+  }
+}
+
+resource "aws_db_subnet_group" "nba_rds_subnet_group" {
+  name       = "nba_rds_subnet_group"
+  subnet_ids = [aws_subnet.nba-private1.id, aws_subnet.nba-private2.id, aws_subnet.nba-private3.id]
 
   tags = {
-    Name = "eks-node-sg"
+    Name = "nba_rds_subnet_group"
+  }
+}
+
+resource "aws_security_group" "nba-rds-sg" {
+  name        = "nba-rds-sg"
+  vpc_id      = aws_vpc.nba-vpc.id
+  description = "Security group for RDS instance"
+
+  tags = {
+    Name = "nba-rds-sg"
   }
 
   ingress {
-    from_port   = 22
-    to_port     = 22
+    from_port   = 3306
+    to_port     = 3306
     protocol    = "tcp"
     cidr_blocks = ["10.10.0.0/16"]
   }
+
   ingress {
     from_port   = -1
     to_port     = -1
@@ -324,255 +383,201 @@ resource "aws_security_group" "eks-node-sg" {
   }
 }
 
-# resource "aws_key_pair" "gitops-key-pair" {
-#   key_name   = "gitops-key"
-#   public_key = file("gitops.pem.pub")
-#   tags = {
-#     description = "terraform key pair import"
-#   }
-# }
+resource "aws_db_instance" "nba-rds" {
+  allocated_storage          = 30
+  storage_type               = "gp2"
+  engine                     = "mysql"
+  engine_version             = "8.0.33"
+  instance_class             = "db.t3.micro"
+  identifier                 = "nba-rds"
+  db_name                    = "nba"
+  username                   = "nba"
+  password                   = "kakaoschool2023"
+  parameter_group_name       = "default.mysql8.0"
+  skip_final_snapshot        = true
+  vpc_security_group_ids     = [aws_security_group.nba-rds-sg.id, ]
+  db_subnet_group_name       = aws_db_subnet_group.nba_rds_subnet_group.name
+  multi_az                   = false
+  publicly_accessible        = false
+  storage_encrypted          = true
+  auto_minor_version_upgrade = false
+  tags = {
+    Name = "nba-rds"
+  }
+}
 
-# resource "aws_key_pair" "bastion-key-pair" {
-#   key_name   = "bastion-key"
-#   public_key = file("bastion.pem.pub")
-#   tags = {
-#     description = "terraform key pair import"
-#   }
-# }
+resource "aws_eks_cluster" "nba-eks" {
+  name     = "nba-eks"
+  role_arn = aws_iam_role.eks_role.arn
+  vpc_config {
+    subnet_ids              = [aws_subnet.nba-private1.id, aws_subnet.nba-private2.id, aws_subnet.nba-private3.id]
+    endpoint_public_access  = false
+    endpoint_private_access = true
+    security_group_ids      = [aws_security_group.nba-eks-sg.id]
+  }
 
-# resource "aws_key_pair" "eks-node-key-pair" {
-#   key_name   = "eks-node-key"
-#   public_key = file("eks-node.pem.pub")
-#   tags = {
-#     description = "terraform key pair import"
-#   }
-# }
+  depends_on = [
+    aws_iam_role_policy_attachment.eks-AmazonEKSClusterPolicy,
+    aws_iam_role_policy_attachment.eks-AmazonEKSVPCResourceController,
+  ]
+}
 
-# resource "aws_db_subnet_group" "nba_rds_subnet_group" {
-#   name       = "nba_rds_subnet_group"
-#   subnet_ids = [aws_subnet.nba-private1.id, aws_subnet.nba-private2.id, aws_subnet.nba-private3.id]
+resource "aws_security_group" "nba-eks-sg" {
+  name        = "nba-eks-sg"
+  vpc_id      = aws_vpc.nba-vpc.id
+  description = "Security group for EKS EndPoint"
 
-#   tags = {
-#     Name = "nba_rds_subnet_group"
-#   }
-# }
+  tags = {
+    Name = "nba-eks-sg"
+  }
 
-# resource "aws_security_group" "nba-rds-sg" {
-#   name        = "nba-rds-sg"
-#   vpc_id      = aws_vpc.nba-vpc.id
-#   description = "Security group for RDS instance"
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["10.10.0.0/16"]
+  }
 
-#   tags = {
-#     Name = "nba-rds-sg"
-#   }
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["10.10.0.0/16"]
+  }
 
-#   ingress {
-#     from_port   = 3306
-#     to_port     = 3306
-#     protocol    = "tcp"
-#     cidr_blocks = ["10.10.0.0/16"]
-#   }
+  ingress {
+    from_port   = -1
+    to_port     = -1
+    protocol    = "icmp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
 
-#   ingress {
-#     from_port   = -1
-#     to_port     = -1
-#     protocol    = "icmp"
-#     cidr_blocks = ["0.0.0.0/0"]
-#   }
-#   egress {
-#     from_port   = 0
-#     to_port     = 0
-#     protocol    = "-1"
-#     cidr_blocks = ["0.0.0.0/0"]
-#   }
-# }
+resource "aws_eks_node_group" "eks-node-group" {
+  cluster_name    = aws_eks_cluster.nba-eks.name
+  node_group_name = "eks-node-group"
+  node_role_arn   = aws_iam_role.node-group-role.arn
+  subnet_ids      = [aws_subnet.nba-private1.id, aws_subnet.nba-private2.id, aws_subnet.nba-private3.id]
+  instance_types  = ["t3.medium"]
+  capacity_type   = "SPOT"
+  scaling_config {
+    min_size     = 2
+    max_size     = 5
+    desired_size = 3
+  }
+  remote_access {
+    ec2_ssh_key = aws_key_pair.eks-node-key-pair.key_name
+    # source_security_group_ids = [aws_security_group.eks-node-sg.id]
+  }
+  depends_on = [aws_iam_role_policy_attachment.attach-AmazonEKSWorkerNodePolicy,
+    aws_iam_role_policy_attachment.attach-AmazonEKS_CNI_Policy,
+    aws_iam_role_policy_attachment.attach-AmazonEC2ContainerRegistryReadOnly,
+    aws_iam_role_policy_attachment.attach-AmazonEC2ContainerRegistryFullAccess,
+  aws_iam_role_policy_attachment.attach-EC2InstanceProfileForImageBuilderECRContainerBuilds]
+}
 
-# resource "aws_db_instance" "nba-rds" {
-#   allocated_storage          = 30
-#   storage_type               = "gp2"
-#   engine                     = "mysql"
-#   engine_version             = "8.0.33"
-#   instance_class             = "db.t3.micro"
-#   identifier                 = "nba-rds"
-#   db_name                    = "nba"
-#   username                   = "nba"
-#   password                   = "kakaoschool2023"
-#   parameter_group_name       = "default.mysql8.0"
-#   skip_final_snapshot        = true
-#   vpc_security_group_ids     = [aws_security_group.nba-rds-sg.id, ]
-#   db_subnet_group_name       = aws_db_subnet_group.nba_rds_subnet_group.name
-#   multi_az                   = false
-#   publicly_accessible        = false
-#   storage_encrypted          = true
-#   auto_minor_version_upgrade = false
-#   tags = {
-#     Name = "nba-rds"
-#   }
-# }
+data "aws_iam_policy_document" "assume_role-eks" {
+  statement {
+    effect = "Allow"
 
-# resource "aws_eks_cluster" "nba-eks" {
-#   name     = "nba-eks"
-#   role_arn = aws_iam_role.eks_role.arn
-#   vpc_config {
-#     subnet_ids              = [aws_subnet.nba-private1.id, aws_subnet.nba-private2.id, aws_subnet.nba-private3.id]
-#     endpoint_public_access  = false
-#     endpoint_private_access = true
-#     security_group_ids      = [aws_security_group.nba-eks-sg.id]
-#   }
+    principals {
+      type        = "Service"
+      identifiers = ["eks.amazonaws.com"]
+    }
 
-#   depends_on = [
-#     aws_iam_role_policy_attachment.eks-AmazonEKSClusterPolicy,
-#     aws_iam_role_policy_attachment.eks-AmazonEKSVPCResourceController,
-#   ]
-# }
+    actions = ["sts:AssumeRole"]
+  }
+}
 
-# resource "aws_security_group" "nba-eks-sg" {
-#   name        = "nba-eks-sg"
-#   vpc_id      = aws_vpc.nba-vpc.id
-#   description = "Security group for EKS EndPoint"
+data "aws_iam_policy_document" "assume_role-nodegroup" {
+  statement {
+    effect = "Allow"
 
-#   tags = {
-#     Name = "nba-eks-sg"
-#   }
+    principals {
+      type        = "Service"
+      identifiers = ["ec2.amazonaws.com"]
+    }
 
-#   ingress {
-#     from_port   = 443
-#     to_port     = 443
-#     protocol    = "tcp"
-#     cidr_blocks = ["10.10.0.0/16"]
-#   }
+    actions = ["sts:AssumeRole"]
+  }
+}
 
-#   ingress {
-#     from_port   = 80
-#     to_port     = 80
-#     protocol    = "tcp"
-#     cidr_blocks = ["10.10.0.0/16"]
-#   }
+resource "aws_iam_role" "eks_role" {
+  name               = "eks_role"
+  assume_role_policy = data.aws_iam_policy_document.assume_role-eks.json
+}
 
-#   ingress {
-#     from_port   = -1
-#     to_port     = -1
-#     protocol    = "icmp"
-#     cidr_blocks = ["0.0.0.0/0"]
-#   }
-#   egress {
-#     from_port   = 0
-#     to_port     = 0
-#     protocol    = "-1"
-#     cidr_blocks = ["0.0.0.0/0"]
-#   }
-# }
+resource "aws_iam_role_policy_attachment" "eks-AmazonEKSClusterPolicy" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
+  role       = aws_iam_role.eks_role.name
+}
 
+resource "aws_iam_role_policy_attachment" "eks-AmazonEKSVPCResourceController" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSVPCResourceController"
+  role       = aws_iam_role.eks_role.name
+}
 
-# resource "aws_eks_node_group" "eks-node-group" {
-#   cluster_name    = aws_eks_cluster.nba-eks.name
-#   node_group_name = "eks-node-group"
-#   node_role_arn   = aws_iam_role.node-group-role.arn
-#   subnet_ids      = [aws_subnet.nba-private1.id, aws_subnet.nba-private2.id, aws_subnet.nba-private3.id]
-#   instance_types  = ["t3.medium"]
-#   capacity_type   = "SPOT"
-#   scaling_config {
-#     min_size     = 2
-#     max_size     = 5
-#     desired_size = 3
-#   }
-#   remote_access {
-#     ec2_ssh_key               = aws_key_pair.eks-node-key-pair.key_name
-#     source_security_group_ids = [aws_security_group.eks-node-sg.id]
-#   }
-#   depends_on = [aws_iam_role_policy_attachment.attach-AmazonEKSWorkerNodePolicy,
-#     aws_iam_role_policy_attachment.attach-AmazonEKS_CNI_Policy,
-#     aws_iam_role_policy_attachment.attach-AmazonEC2ContainerRegistryReadOnly,
-#   aws_iam_role_policy_attachment.attach-EC2InstanceProfileForImageBuilderECRContainerBuilds]
-# }
+resource "aws_iam_role" "node-group-role" {
+  name               = "node-group-role"
+  assume_role_policy = data.aws_iam_policy_document.assume_role-nodegroup.json
+}
 
-# data "aws_iam_policy_document" "assume_role-eks" {
-#   statement {
-#     effect = "Allow"
+resource "aws_iam_role_policy_attachment" "attach-AmazonEC2ContainerRegistryFullAccess" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess"
+  role       = aws_iam_role.node-group-role.name
+}
 
-#     principals {
-#       type        = "Service"
-#       identifiers = ["eks.amazonaws.com"]
-#     }
+resource "aws_iam_role_policy_attachment" "attach-AmazonEKSWorkerNodePolicy" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
+  role       = aws_iam_role.node-group-role.name
+}
 
-#     actions = ["sts:AssumeRole"]
-#   }
-# }
+resource "aws_iam_role_policy_attachment" "attach-AmazonEKS_CNI_Policy" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+  role       = aws_iam_role.node-group-role.name
+}
 
-# data "aws_iam_policy_document" "assume_role-nodegroup" {
-#   statement {
-#     effect = "Allow"
+resource "aws_iam_role_policy_attachment" "attach-AmazonEC2ContainerRegistryReadOnly" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+  role       = aws_iam_role.node-group-role.name
+}
 
-#     principals {
-#       type        = "Service"
-#       identifiers = ["ec2.amazonaws.com"]
-#     }
-
-#     actions = ["sts:AssumeRole"]
-#   }
-# }
-
-# resource "aws_iam_role" "eks_role" {
-#   name               = "eks_role"
-#   assume_role_policy = data.aws_iam_policy_document.assume_role-eks.json
-# }
-
-# resource "aws_iam_role_policy_attachment" "eks-AmazonEKSClusterPolicy" {
-#   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
-#   role       = aws_iam_role.eks_role.name
-# }
-
-# resource "aws_iam_role_policy_attachment" "eks-AmazonEKSVPCResourceController" {
-#   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSVPCResourceController"
-#   role       = aws_iam_role.eks_role.name
-# }
-
-# resource "aws_iam_role" "node-group-role" {
-#   name               = "node-group-role"
-#   assume_role_policy = data.aws_iam_policy_document.assume_role-nodegroup.json
-# }
-
-# resource "aws_iam_role_policy_attachment" "attach-AmazonEKSWorkerNodePolicy" {
-#   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
-#   role       = aws_iam_role.node-group-role.name
-# }
-
-# resource "aws_iam_role_policy_attachment" "attach-AmazonEKS_CNI_Policy" {
-#   policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
-#   role       = aws_iam_role.node-group-role.name
-# }
-
-# resource "aws_iam_role_policy_attachment" "attach-AmazonEC2ContainerRegistryReadOnly" {
-#   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
-#   role       = aws_iam_role.node-group-role.name
-# }
-
-# resource "aws_iam_role_policy_attachment" "attach-EC2InstanceProfileForImageBuilderECRContainerBuilds" {
-#   policy_arn = "arn:aws:iam::aws:policy/EC2InstanceProfileForImageBuilderECRContainerBuilds"
-#   role       = aws_iam_role.node-group-role.name
-# }
+resource "aws_iam_role_policy_attachment" "attach-EC2InstanceProfileForImageBuilderECRContainerBuilds" {
+  policy_arn = "arn:aws:iam::aws:policy/EC2InstanceProfileForImageBuilderECRContainerBuilds"
+  role       = aws_iam_role.node-group-role.name
+}
 
 
-# resource "aws_eks_addon" "coredns" {
-#   cluster_name                = aws_eks_cluster.nba-eks.name
-#   addon_name                  = "coredns"
-#   resolve_conflicts_on_create = "OVERWRITE"
-#   depends_on                  = [aws_eks_node_group.eks-node-group]
-# }
+resource "aws_eks_addon" "coredns" {
+  cluster_name                = aws_eks_cluster.nba-eks.name
+  addon_name                  = "coredns"
+  resolve_conflicts_on_create = "OVERWRITE"
+  depends_on                  = [aws_eks_node_group.eks-node-group]
+}
 
-# resource "aws_eks_addon" "kube-proxy" {
-#   cluster_name                = aws_eks_cluster.nba-eks.name
-#   addon_name                  = "kube-proxy"
-#   resolve_conflicts_on_create = "OVERWRITE"
-#   depends_on                  = [aws_eks_node_group.eks-node-group]
-# }
+resource "aws_eks_addon" "kube-proxy" {
+  cluster_name                = aws_eks_cluster.nba-eks.name
+  addon_name                  = "kube-proxy"
+  resolve_conflicts_on_create = "OVERWRITE"
+  depends_on                  = [aws_eks_node_group.eks-node-group]
+}
 
-# resource "aws_eks_addon" "vpc-cni" {
-#   cluster_name                = aws_eks_cluster.nba-eks.name
-#   addon_name                  = "vpc-cni"
-#   resolve_conflicts_on_create = "OVERWRITE"
-#   depends_on                  = [aws_eks_node_group.eks-node-group]
-# }
+resource "aws_eks_addon" "vpc-cni" {
+  cluster_name                = aws_eks_cluster.nba-eks.name
+  addon_name                  = "vpc-cni"
+  resolve_conflicts_on_create = "OVERWRITE"
+  depends_on                  = [aws_eks_node_group.eks-node-group]
+}
+
+output "endpoint" {
+  value = aws_eks_cluster.nba-eks.endpoint
+}
 
 output "instance_public_ip" {
   description = "Public IP address of the EC2 instance"
