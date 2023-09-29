@@ -17,6 +17,8 @@ Infra Provisioning In AWS With Terraform
 
 ## Diagram for reference
 
+- If you want terraform graph outputs, there are in pictures
+
 ![Basic_Diagram](pictures/Basic_Diagram.png)
 
 ### EKS & Node Group

@@ -575,11 +575,12 @@ resource "aws_eks_addon" "vpc-cni" {
   depends_on                  = [aws_eks_node_group.eks-node-group]
 }
 
-output "endpoint" {
-  value = aws_eks_cluster.nba-eks.endpoint
+output "nba-eks-endpoint" {
+  description = "Private NBA EKS Endpoint"
+  value       = aws_eks_cluster.nba-eks.endpoint
 }
 
-output "instance_public_ip" {
-  description = "Public IP address of the EC2 instance"
+output "bastion-host-public-ip" {
+  description = "Public IP address of Bastion Host"
   value       = aws_instance.bastion-host.public_ip
 }
