@@ -292,34 +292,6 @@ resource "aws_security_group" "bastion-host-sg" {
   }
 }
 
-# resource "aws_security_group" "eks-node-sg" {
-#   name   = "eks-node-sg"
-#   vpc_id = aws_vpc.nba-vpc.id
-
-#   tags = {
-#     Name = "eks-node-sg"
-#   }
-
-#   ingress {
-#     from_port   = 22
-#     to_port     = 22
-#     protocol    = "tcp"
-#     cidr_blocks = ["10.10.0.0/16"]
-#   }
-#   ingress {
-#     from_port   = -1
-#     to_port     = -1
-#     protocol    = "icmp"
-#     cidr_blocks = ["0.0.0.0/0"]
-#   }
-#   egress {
-#     from_port   = 0
-#     to_port     = 0
-#     protocol    = "-1"
-#     cidr_blocks = ["0.0.0.0/0"]
-#   }
-# }
-
 resource "aws_key_pair" "gitops-key-pair" {
   key_name   = "gitops-key"
   public_key = file("gitops.pem.pub")
@@ -434,6 +406,20 @@ resource "aws_security_group" "nba-eks-sg" {
   ingress {
     from_port   = 443
     to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["10.10.0.0/16"]
+  }
+
+  ingress {
+    from_port   = 6443
+    to_port     = 6443
+    protocol    = "tcp"
+    cidr_blocks = ["10.10.0.0/16"]
+  }
+
+  ingress {
+    from_port   = 9443
+    to_port     = 9443
     protocol    = "tcp"
     cidr_blocks = ["10.10.0.0/16"]
   }
