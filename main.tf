@@ -38,6 +38,16 @@ resource "aws_subnet" "nba-public2" {
   }
 }
 
+resource "aws_subnet" "nba-public3" {
+  vpc_id                  = aws_vpc.nba-vpc.id
+  cidr_block              = "10.10.3.0/24"
+  availability_zone       = "ap-northeast-1d"
+  map_public_ip_on_launch = true
+  tags = {
+    Name = "nba-public3"
+  }
+}
+
 
 resource "aws_subnet" "nba-private1" {
   vpc_id            = aws_vpc.nba-vpc.id
@@ -75,43 +85,31 @@ resource "aws_internet_gateway" "nba-igw" {
   }
 }
 
-
-resource "aws_route_table" "nba-public1" {
+resource "aws_route_table" "nba-public" {
   vpc_id = aws_vpc.nba-vpc.id
   route {
     cidr_block = "0.0.0.0/0"
     gateway_id = aws_internet_gateway.nba-igw.id
   }
   tags = {
-    Name = "nba-public1"
+    Name = "nba-public"
   }
 }
-
-
-resource "aws_route_table" "nba-public2" {
-  vpc_id = aws_vpc.nba-vpc.id
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.nba-igw.id
-  }
-  tags = {
-    Name = "nba-public2"
-  }
-}
-
 
 resource "aws_route_table_association" "nba-routing-public1" {
   subnet_id      = aws_subnet.nba-public1.id
-  route_table_id = aws_route_table.nba-public1.id
+  route_table_id = aws_route_table.nba-public.id
 }
-
-
 
 resource "aws_route_table_association" "nba-routing-public2" {
   subnet_id      = aws_subnet.nba-public2.id
-  route_table_id = aws_route_table.nba-public2.id
+  route_table_id = aws_route_table.nba-public.id
 }
 
+resource "aws_route_table_association" "nba-routing-public3" {
+  subnet_id      = aws_subnet.nba-public3.id
+  route_table_id = aws_route_table.nba-public.id
+}
 
 resource "aws_eip" "nba-natgw-eip" {
   domain = "vpc"
@@ -119,7 +117,6 @@ resource "aws_eip" "nba-natgw-eip" {
     Name = "nba-natgw-eip"
   }
 }
-
 
 resource "aws_nat_gateway" "nba-nat-gw" {
   allocation_id = aws_eip.nba-natgw-eip.id
@@ -130,57 +127,36 @@ resource "aws_nat_gateway" "nba-nat-gw" {
   }
 }
 
-resource "aws_route_table" "nba-private1" {
+resource "aws_route_table" "nba-private" {
   vpc_id = aws_vpc.nba-vpc.id
   route {
     cidr_block = "0.0.0.0/0"
     gateway_id = aws_nat_gateway.nba-nat-gw.id
   }
   tags = {
-    Name = "nba-private1"
-  }
-}
-
-resource "aws_route_table" "nba-private2" {
-  vpc_id = aws_vpc.nba-vpc.id
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_nat_gateway.nba-nat-gw.id
-  }
-  tags = {
-    Name = "nba-private2"
-  }
-}
-resource "aws_route_table" "nba-private3" {
-  vpc_id = aws_vpc.nba-vpc.id
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_nat_gateway.nba-nat-gw.id
-  }
-  tags = {
-    Name = "nba-private3"
+    Name = "nba-private"
   }
 }
 
 resource "aws_route_table_association" "nba-routing-private1" {
   subnet_id      = aws_subnet.nba-private1.id
-  route_table_id = aws_route_table.nba-private1.id
+  route_table_id = aws_route_table.nba-private.id
 }
 
 
 resource "aws_route_table_association" "nba-routing-private2" {
   subnet_id      = aws_subnet.nba-private2.id
-  route_table_id = aws_route_table.nba-private2.id
+  route_table_id = aws_route_table.nba-private.id
 }
 
 resource "aws_route_table_association" "nba-routing-private3" {
   subnet_id      = aws_subnet.nba-private3.id
-  route_table_id = aws_route_table.nba-private3.id
+  route_table_id = aws_route_table.nba-private.id
 }
 
 resource "aws_instance" "gitops-host" {
-  ami                         = "ami-0a5f9e25e60e0982d"
-  instance_type               = "t2.micro"
+  ami                         = "ami-0bd572a15a0fb46e5"
+  instance_type               = "t3.medium"
   subnet_id                   = aws_subnet.nba-private1.id
   associate_public_ip_address = false
   vpc_security_group_ids      = [aws_security_group.gitops-host-sg.id, ]
@@ -193,8 +169,8 @@ resource "aws_instance" "gitops-host" {
 }
 
 resource "aws_instance" "bastion-host" {
-  ami                         = "ami-0c53faf64a54b403d"
-  instance_type               = "t2.micro"
+  ami                         = "ami-0ebc405e12e2bdc43"
+  instance_type               = "t3.medium"
   subnet_id                   = aws_subnet.nba-public1.id
   associate_public_ip_address = true
   vpc_security_group_ids      = [aws_security_group.bastion-host-sg.id, ]
@@ -459,7 +435,6 @@ resource "aws_eks_node_group" "eks-node-group" {
   }
   remote_access {
     ec2_ssh_key = aws_key_pair.eks-node-key-pair.key_name
-    # source_security_group_ids = [aws_security_group.eks-node-sg.id]
   }
   depends_on = [aws_iam_role_policy_attachment.attach-AmazonEKSWorkerNodePolicy,
     aws_iam_role_policy_attachment.attach-AmazonEKS_CNI_Policy,
@@ -538,7 +513,6 @@ resource "aws_iam_role_policy_attachment" "attach-EC2InstanceProfileForImageBuil
   policy_arn = "arn:aws:iam::aws:policy/EC2InstanceProfileForImageBuilderECRContainerBuilds"
   role       = aws_iam_role.node-group-role.name
 }
-
 
 resource "aws_eks_addon" "coredns" {
   cluster_name                = aws_eks_cluster.nba-eks.name
